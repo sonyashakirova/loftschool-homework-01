@@ -1,40 +1,31 @@
-const fs = require("fs");
 const path = require("path");
+const fsPromise = require("./fs-promise");
 
-const sorter = function(src, dist, del) {
-  fs.readdir(src, function(err, files) {
-    if (err) throw err;
+const sorter = async function(src, dist) {
+  const files = await fsPromise.readdir(src);
 
-    files.forEach(function(file) {
-      const currentPath = path.join(src, file);
+  for (const file of files) {
+    const currentPath = path.join(src, file);
+    const stat = await fsPromise.stats(currentPath);
 
-      fs.stat(currentPath, function(err, stats) {
-        if (err) throw err;
+    if (stat.isDirectory()) {
+      await sorter(currentPath, dist);
+    } else {
+      const fileBase = path.parse(currentPath).base;
+      const newDir = path.join(dist, fileBase[0].toUpperCase());
+      const newPath = path.join(newDir, fileBase);
 
-        if (stats.isDirectory()) {
-          sorter(currentPath, dist);
-        } else {
-          const fileBase = path.parse(currentPath).base;
-          const newDir = path.join(dist, fileBase[0].toUpperCase());
-          const newPath = path.join(newDir, fileBase);
+      await fsPromise.mkdir(newDir);
+      
+      const alreadyExists = await fsPromise.exists(newPath);
 
-          fs.mkdir(newDir, { recursive: true }, function(err) {
-            if (err) throw err;
-          })
-
-          fs.exists(newPath, function(e) {
-            if (e) {
-              console.log(`Warning: File ${fileBase} has duplicates`);
-            } else {
-              fs.link(currentPath, newPath, function(err) {
-                if (err) throw err;
-              })
-            }
-          })
-        }
-      })
-    })
-  })
+      if (alreadyExists) {
+        console.log(`Warning: File ${fileBase} has duplicates`);
+      } else {
+        await fsPromise.link(currentPath, newPath);
+      }
+    }
+  }
 }
 
 module.exports = sorter;
